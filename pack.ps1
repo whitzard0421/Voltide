@@ -4,7 +4,7 @@ param(
 
 # Builds Voltide and drops a clean, runnable folder inside the project:
 #   dist\Voltide.exe
-#   dist\Fonts\  (three TTFs, without them the card typography falls back to Segoe UI)
+#   dist\device-names.ini  (optional model names for shared receiver IDs)
 #
 # Default target is dist\ next to this script, so everything stays in one place.
 # Override with: powershell -File pack.ps1 -Target "E:\somewhere"
@@ -14,13 +14,13 @@ $root = $PSScriptRoot   # this script lives next to build.ps1
 
 if (-not $Target) { $Target = Join-Path $root 'dist' }
 
-# A running copy locks the exe, so close it before compiling — not after.
-$running = Get-Process Voltide -ErrorAction SilentlyContinue
-if ($running) {
-    Write-Host "Closing running copy..." -ForegroundColor Yellow
-    $running | Stop-Process -Force
-    Start-Sleep -Milliseconds 800
+# 只检查本次构建和目标文件，不终止其他目录中的 Voltide。
+$buildExe = Join-Path $root 'Voltide.exe'
+$targetExe = [IO.Path]::GetFullPath((Join-Path $Target 'Voltide.exe'))
+$running = Get-Process Voltide -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -eq $buildExe -or $_.Path -eq $targetExe
 }
+if ($running) { throw 'This source or target copy of Voltide is running. Exit that copy before packing.' }
 
 Write-Host "Building..." -ForegroundColor Cyan
 & (Join-Path $root 'build.ps1')
@@ -33,8 +33,15 @@ Write-Host "Packing to $Target" -ForegroundColor Cyan
 
 New-Item -ItemType Directory -Path $Target -Force | Out-Null
 
-# One file, nothing else: the three typefaces are manifest resources inside the exe.
+# 字体可嵌入 exe；可选的型号覆盖配置与 exe 一并分发。
 Copy-Item $exe (Join-Path $Target 'Voltide.exe') -Force
+Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $Target 'LICENSE') -Force
+$names = Join-Path $root 'device-names.ini'
+$targetNames = Join-Path $Target 'device-names.ini'
+# 已有目标配置属于使用者，重新打包时保留其本机命名。
+if ((Test-Path -LiteralPath $names) -and -not (Test-Path -LiteralPath $targetNames)) {
+    Copy-Item -LiteralPath $names -Destination $targetNames
+}
 
 Write-Host ""
 Write-Host "--- packed ---" -ForegroundColor Green

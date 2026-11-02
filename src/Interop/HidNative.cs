@@ -124,16 +124,16 @@ namespace Voltide.Interop
         public static extern bool CloseHandle(IntPtr h);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool WriteFile(IntPtr h, byte[] buf, int n, out int written, ref OVERLAPPED ov);
+        public static extern bool WriteFile(IntPtr h, IntPtr buf, int n, IntPtr written, IntPtr ov);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadFile(IntPtr h, byte[] buf, int n, out int read, ref OVERLAPPED ov);
+        public static extern bool ReadFile(IntPtr h, IntPtr buf, int n, IntPtr read, IntPtr ov);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool GetOverlappedResult(IntPtr h, ref OVERLAPPED ov, out int transferred, bool wait);
+        public static extern bool GetOverlappedResult(IntPtr h, IntPtr ov, out int transferred, bool wait);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CancelIoEx(IntPtr h, ref OVERLAPPED ov);
+        public static extern bool CancelIoEx(IntPtr h, IntPtr ov);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr CreateEvent(IntPtr sec, bool manual, bool initial, IntPtr name);
@@ -217,7 +217,7 @@ namespace Voltide.Interop
 
     /// <summary>
     /// One open HID handle. Uses overlapped I/O so a blocking read never
-    /// races a write on the same handle (that combination kills the process).
+    /// races a write on the same handle. Calls on a session must be serialized.
     /// </summary>
     public sealed class HidSession : IDisposable
     {
@@ -255,27 +255,63 @@ namespace Voltide.Interop
                 throw new InvalidOperationException("Cannot open HID device, error " + Marshal.GetLastWin32Error());
 
             _evt = HidNative.CreateEvent(IntPtr.Zero, true, false, IntPtr.Zero);
+            if (_evt == IntPtr.Zero)
+            {
+                int error = Marshal.GetLastWin32Error();
+                HidNative.CloseHandle(_handle);
+                _handle = IntPtr.Zero;
+                throw new InvalidOperationException("Cannot create HID event, error " + error);
+            }
         }
 
         public bool Write(byte[] report, int timeoutMs)
         {
-            if (_closed) return false;
-            HidNative.ResetEvent(_evt);
-            HidNative.OVERLAPPED ov = new HidNative.OVERLAPPED();
-            ov.hEvent = _evt;
-            int written = 0;
-            bool ok = HidNative.WriteFile(_handle, report, report.Length, out written, ref ov);
-            if (!ok)
+            return Transfer(report, true, timeoutMs) == report.Length;
+        }
+
+        /// <summary>
+        /// 一次只允许一个读写操作。缓冲区及 OVERLAPPED 必须保留到原生 I/O 完成，
+        /// 超时取消也要等待完成，否则下一次读取或 GC 可能覆盖仍被驱动使用的内存。
+        /// </summary>
+        private int Transfer(byte[] buffer, bool write, int timeoutMs)
+        {
+            if (_closed) return -1;
+            GCHandle pinned = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            IntPtr nativeOverlapped = IntPtr.Zero;
+            bool pending = false;
+            try
             {
-                int err = Marshal.GetLastWin32Error();
-                if (err != HidNative.ERROR_IO_PENDING) return false;
-                if (HidNative.WaitForSingleObject(_evt, (uint)timeoutMs) != 0)
+                nativeOverlapped = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(HidNative.OVERLAPPED)));
+                HidNative.OVERLAPPED ov = new HidNative.OVERLAPPED();
+                ov.hEvent = _evt;
+                Marshal.StructureToPtr(ov, nativeOverlapped, false);
+                HidNative.ResetEvent(_evt);
+                bool ok = write
+                    ? HidNative.WriteFile(_handle, pinned.AddrOfPinnedObject(), buffer.Length, IntPtr.Zero, nativeOverlapped)
+                    : HidNative.ReadFile(_handle, pinned.AddrOfPinnedObject(), buffer.Length, IntPtr.Zero, nativeOverlapped);
+                if (!ok)
                 {
-                    HidNative.CancelIoEx(_handle, ref ov);
-                    return false;
+                    if (Marshal.GetLastWin32Error() != HidNative.ERROR_IO_PENDING) return -1;
+                    pending = true;
+                    if (HidNative.WaitForSingleObject(_evt, (uint)timeoutMs) != 0) return -1;
                 }
+                int transferred;
+                ok = HidNative.GetOverlappedResult(_handle, nativeOverlapped, out transferred, true);
+                pending = false;
+                return ok ? transferred : -1;
             }
-            return true;
+            finally
+            {
+                if (pending)
+                {
+                    HidNative.CancelIoEx(_handle, nativeOverlapped);
+                    int ignored;
+                    // CancelIoEx 只发起取消；即使它与正常完成竞争，也必须回收完成结果。
+                    HidNative.GetOverlappedResult(_handle, nativeOverlapped, out ignored, true);
+                }
+                if (nativeOverlapped != IntPtr.Zero) Marshal.FreeHGlobal(nativeOverlapped);
+                pinned.Free();
+            }
         }
 
         /// <summary>
@@ -290,24 +326,8 @@ namespace Voltide.Interop
 
         public byte[] Read(int timeoutMs)
         {
-            if (_closed) return null;
-            HidNative.ResetEvent(_evt);
-            HidNative.OVERLAPPED ov = new HidNative.OVERLAPPED();
-            ov.hEvent = _evt;
             byte[] buf = new byte[_inputLen];
-            int read = 0;
-            bool ok = HidNative.ReadFile(_handle, buf, _inputLen, out read, ref ov);
-            if (!ok)
-            {
-                int err = Marshal.GetLastWin32Error();
-                if (err != HidNative.ERROR_IO_PENDING) return null;
-                if (HidNative.WaitForSingleObject(_evt, (uint)timeoutMs) != 0)
-                {
-                    HidNative.CancelIoEx(_handle, ref ov);
-                    return null;
-                }
-                if (!HidNative.GetOverlappedResult(_handle, ref ov, out read, false)) return null;
-            }
+            int read = Transfer(buf, false, timeoutMs);
             if (read <= 0) return null;
             byte[] res = new byte[read];
             Array.Copy(buf, res, res.Length);

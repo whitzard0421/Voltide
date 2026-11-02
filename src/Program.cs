@@ -109,7 +109,7 @@ namespace Voltide
                 Console.WriteLine("path    : " + s.Info.HidPath);
                 Console.WriteLine("online  : " + s.Reading.Online);
                 Console.WriteLine("percent : " + (s.Reading.Percent.HasValue ? s.Reading.Percent.Value.ToString() + "%" : "null"));
-                Console.WriteLine("charging: " + s.Reading.Charging);
+                Console.WriteLine("charging: " + (s.Reading.ChargingKnown ? s.Reading.Charging.ToString() : "unknown"));
                 Console.WriteLine("detail  : " + s.Reading.Detail);
                 Console.WriteLine("raw     : " + s.Reading.Raw);
                 Console.WriteLine("error   : " + s.Reading.Error);

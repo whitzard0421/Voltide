@@ -27,6 +27,7 @@ namespace Voltide.Core
         {
             _providers.Add(new LogitechProvider());
             _providers.Add(new MchoseProvider());
+            _providers.Add(new MchoseMouseProvider());
             _providers.Add(new AsusRogProvider());
             _providers.Add(new ImecooProvider());
             _providers.Add(new AtkMouseProvider());
@@ -56,6 +57,7 @@ namespace Voltide.Core
         private void RefreshCore()
         {
             List<DeviceSnapshot> next = new List<DeviceSnapshot>();
+            Dictionary<string, string> modelNames = DeviceNames.Load();
 
             // Enumerate once per refresh and share the result. Every provider used to
             // walk the whole HID tree itself, which cost ~400 ms per provider on a
@@ -85,6 +87,7 @@ namespace Voltide.Core
 
                 foreach (DeviceInfo d in devices)
                 {
+                    DeviceNames.Apply(d, modelNames);
                     DeviceReading r;
                     try
                     {

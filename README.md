@@ -1,15 +1,18 @@
 # Voltide
 
+本 fork 适配 **MCHOSE K7 V2 Ultra+ 鼠标**与 **MCHOSE GX87 键盘**。
+GX87 接收器通过 USB Hub 的 2.4G 连接已实测；使用时保留 `Voltide.exe` 同目录的
+`device-names.ini`，键盘会显示为 GX87。协议与实测记录见 [设备适配说明](docs/current-devices.md)。
+
 
 
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-000000?logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)
-![Size](https://img.shields.io/badge/size-8.3%20MB-74dd7c)
 ![License](https://img.shields.io/badge/license-MIT-74dd7c)
 
 一款轻量的 Windows 托盘工具，在一块面板中显示 2.4G 无线外设（键盘与鼠标）的电量，无需安装任何厂商软件。
 
-目前已内置罗技、迈丛、ROG 三家适配器。这是作者手头拥有的设备，而非工具的能力边界：适配层被设计成「支持一个新品牌 = 新增一个独立的类」。
+目前已内置罗技、迈丛、ROG、雷蛇、ATK 等适配器。这是作者手头拥有的设备，而非工具的能力边界：适配层被设计成「支持一个新品牌 = 新增一个独立的类」。
 
 ![Voltide 面板](docs/panel.png)
 
@@ -30,7 +33,7 @@
 - **可调刷新间隔。** 面板打开时可选 15 秒、30 秒或 90 秒，设置会被保存并在下次启动时恢复。
 - **托盘集成。** 左键打开面板，右键菜单列出每台设备及其当前电量。
 - **开机自启。** 可选，在托盘菜单中切换。
-- **单文件发布。** 8.3 MB，无安装程序，除 Windows 自带的 .NET Framework 外无其他依赖。
+- **便携运行。** 无安装程序，依赖 Windows 自带的 .NET Framework；本 fork 附带一个型号命名配置文件。
 
 ## 当前已支持
 
@@ -39,7 +42,8 @@
 | 品牌 | 型号 | 协议 |
 |---|---|---|
 | 罗技 | G304、G Pro X Superlight 2（GPW3）、M750M、G102 等 | HID++ 2.0，经由 LIGHTSPEED / Logi Bolt / Unifying |
-| 迈丛 MCHOSE | K99 v2、G75 Pro | 厂商自定义 HID，20 字节帧 |
+| 迈丛 MCHOSE | K99 v2、G75 Pro、GX87 | 厂商自定义 HID，20 字节帧 |
+| 迈丛 MCHOSE | K7 V2 Ultra+ | `3837:1014`，64 字节 HID 输出报告 |
 | ROG | AZOTH EXTREME（夜魔 Extreme） | ROG OMNI RECEIVER，64 字节帧 |
 | 雷蛇 Razer | 毒蝰终极版、毒蝰 V3 Pro、炼狱蝰蛇 V3/V4 Pro、巴塞利斯蛇 V3 Pro 等无线鼠标 | 91 字节 Feature Report |
 | 雷蛇 Razer | 旋风黑鲨 V2 专业版 | 64 字节音频通道，0xFF00 |
@@ -77,8 +81,8 @@ public interface IDeviceProvider
 
 ## 使用方法
 
-1. 从 [Releases](../../releases) 下载 `Voltide.exe`。
-2. 运行。面板会打开一次，之后常驻托盘。
+1. 按下方构建命令生成便携目录，或解压已提供的便携包；将 `device-names.ini` 保留在 `Voltide.exe` 旁边。
+2. 若旧版正在运行，先从旧版托盘菜单退出，再运行新版。面板打开后常驻托盘。
 3. 左键点击托盘图标打开面板，右键查看设备列表。
 
 无需安装、无后台服务、无需管理员权限。
@@ -100,6 +104,19 @@ public interface IDeviceProvider
 - **刷新间隔** —— 面板底部的三个选项（`15s / 30s / 90s`），默认 90 秒。面板隐藏到托盘后，刷新放慢至 5 分钟。
 - **开机自启** —— 托盘菜单中的开关。写入当前用户的启动项，无需提权。
 
+### 共用接收器的型号名称
+
+`3554:FA09` 被多款键盘使用，不能仅凭 USB ID 判断为 K99 v2 或 GX87。
+程序优先使用设备的产品名称；通用接收器默认显示 `2.4G Keyboard`。
+可在 exe 同目录的 UTF-8 文件 `device-names.ini` 中指定型号，点击刷新后生效：
+
+```ini
+3554:FA09=GX87
+```
+
+配置只改变显示名称。换用其他键盘时修改或删除该行；同一 ID 的设备会使用同一名称。
+本 fork 附带上述 GX87 配置，打包时自动带上，已有目标配置不会被覆盖。
+
 ## 系统要求
 
 - Windows 10 1903 或更高版本，或 Windows 11
@@ -111,11 +128,11 @@ public interface IDeviceProvider
 # 编译（使用 Windows 自带的 C# 编译器）
 powershell -ExecutionPolicy Bypass -File build.ps1
 
-# 生成可分发的单文件版本
+# 生成便携目录（exe 与型号配置）
 powershell -ExecutionPolicy Bypass -File pack.ps1 -Target dist
 ```
 
-三款字体以清单资源的形式嵌入可执行文件，因此产物为单个文件。
+源码不附带上游发布包中的字体，默认使用系统字体。若本地 `Fonts` 目录已有字体，构建脚本会将其嵌入 exe。便携目录同时携带 `device-names.ini`。
 
 ## 协议说明
 
@@ -132,8 +149,8 @@ powershell -ExecutionPolicy Bypass -File pack.ps1 -Target dist
 - 从未上报过电量的设备在休眠时无法被查询唤醒，将显示 `--`，直至被使用。
 - ROG 接收器同时服务于其他外设。若其配对的是鼠标而非键盘，Voltide 仍会将其标记为键盘。
 - 共享同一接收器的无线设备通过接收器上报，而非各自独立上报。
-- 同品牌但不同型号的设备会被识别为现有型号。适配层目前按厂商与接口特征匹配，尚未区分具体型号。
-- 迈丛与狼蛛共用 USB 标识（`3554:FA09`）。目前仅适配迈丛的查询协议，狼蛛键盘可能被识别为迈丛型号，读数也可能不正确。两者需要通过监听设备主动上报来区分，尚未实现。
+- 部分上游适配器仍按厂商与接口特征匹配。K7 V2 Ultra+ 按指定 VID/PID 与接口匹配；迈丛键盘优先用产品字符串，通用接收器可通过 `device-names.ini` 指定型号。
+- 迈丛与狼蛛共用 USB 标识（`3554:FA09`）；型号覆盖不会改变查询协议，也不代表其他品牌已经实测。GX87 的电量已实测，充电状态按官网高半字节定义解码，但尚未实测充电切换；K7 V2 Ultra+ 的充电标志尚未确认，界面显示「充电状态未知」。
 - XInput 手柄只能读到**四档**电量（满 100% / 中 50% / 低 20% / 空 5%），不是精确百分比。卡片详情会标注 `XInput 四档`，避免误读为实测值。
 
 ## 许可

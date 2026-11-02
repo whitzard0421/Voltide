@@ -582,10 +582,11 @@ namespace Voltide.UI
                     ? (shown.Value >= 100 ? "Full" : shown.Value.ToString() + "%")
                     : "--";
 
-                // Three states only: charging, discharging, asleep. A device that is
-                // awake but has not answered yet is shown as asleep — the distinction
-                // meant nothing to the reader and only added a fourth look.
-                if (r.Sleeping || !r.Online || !r.Percent.HasValue) t.Status = "设备休眠中";
+                // 超时、无效回复和未知充电状态分别呈现，避免误报休眠或放电。
+                if (r.Sleeping) t.Status = "设备休眠中";
+                else if (!r.Online || !r.Percent.HasValue)
+                    t.Status = string.IsNullOrEmpty(r.Error) ? "等待读数" : "读取失败";
+                else if (!r.ChargingKnown) t.Status = "充电状态未知";
                 else if (r.Charging) t.Status = "电池充电中";
                 else t.Status = "电池放电中";
 

@@ -231,7 +231,8 @@ namespace Voltide.UI
                         }
                         else
                         {
-                            row.Value = "休眠中";
+                            row.Value = s.Reading != null && !s.Reading.Sleeping && !string.IsNullOrEmpty(s.Reading.Error)
+                                ? "读取失败" : "休眠中";
                         }
                     }
 

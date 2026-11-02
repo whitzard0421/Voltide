@@ -42,6 +42,8 @@ namespace Voltide.Core
         public int? Percent;          // null = unknown
         public BatteryLevel Level;
         public bool Charging;
+        /// <summary>仅电量可解析时为 false，界面不得推断为正在放电。默认保持现有适配器行为。</summary>
+        public bool ChargingKnown = true;
         public bool Online;
         /// <summary>
         /// The dongle is present but the device did not answer (it sleeps between
