@@ -8,8 +8,8 @@ using Voltide.Interop;
 namespace Voltide.Providers
 {
     /// <summary>
-    /// 查询 K7 V2 Ultra+ 接收器的电量，仅发送只读设备信息命令 0x0900。
-    /// 根据公开协议事实独立实现，并与实机回复核对。协议依据： https://github.com/mitsimi/mchose-tray/blob/main/PROTOCOL.md and
+    /// 查询 K7 V2 Ultra+ 接收器的电量与充电状态，仅发送只读设备信息命令 0x0900。
+    /// 充电状态依据官网 0x0900 字段与实机切换报告解析。协议依据： https://github.com/mitsimi/mchose-tray/blob/main/PROTOCOL.md and
     /// https://github.com/Rapou7/offline-mchose/blob/master/REVERSE_ENGINEERING_MCHOSE.md.
     /// </summary>
     public class MchoseMouseProvider : IDeviceProvider
@@ -84,7 +84,8 @@ namespace Voltide.Providers
 
                         int percent;
                         bool charging;
-                        MchoseMouseReplyKind result = MchoseMouseProtocol.ParseResponse(report, out percent, out charging);
+                        bool chargingKnown;
+                        MchoseMouseReplyKind result = MchoseMouseProtocol.ParseResponse(report, out percent, out charging, out chargingKnown);
                         if (result == MchoseMouseReplyKind.Unrelated) continue;
 
                         reading.Raw = ToHex(report);
@@ -103,8 +104,7 @@ namespace Voltide.Providers
                         reading.Percent = percent;
                         reading.Level = BatteryMath.FromPercent(percent);
                         reading.Charging = charging;
-                        // 尚未实测充电状态变化，不向界面报告正在充电或放电。
-                        reading.ChargingKnown = false;
+                        reading.ChargingKnown = chargingKnown;
                         reading.Online = true;
                         reading.Detail = "2.4G";
                         return reading;
@@ -187,10 +187,11 @@ namespace Voltide.Providers
             return request;
         }
 
-        internal static MchoseMouseReplyKind ParseResponse(byte[] report, out int percent, out bool charging)
+        internal static MchoseMouseReplyKind ParseResponse(byte[] report, out int percent, out bool charging, out bool chargingKnown)
         {
             percent = 0;
             charging = false;
+            chargingKnown = false;
             if (report == null || report.Length < 6 || report[4] != 0x00 || report[5] != 0x09)
                 return MchoseMouseReplyKind.Unrelated;
 
@@ -224,6 +225,7 @@ namespace Voltide.Providers
 
             percent = level;
             charging = charge == 1;
+            chargingKnown = true;
             return MchoseMouseReplyKind.Battery;
         }
     }

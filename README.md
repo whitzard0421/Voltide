@@ -43,7 +43,7 @@ GX87 接收器通过 USB Hub 的 2.4G 连接已实测；使用时保留 `Voltide
 |---|---|---|
 | 罗技 | G304、G Pro X Superlight 2（GPW3）、M750M、G102 等 | HID++ 2.0，经由 LIGHTSPEED / Logi Bolt / Unifying |
 | 迈丛 MCHOSE | K99 v2、G75 Pro、GX87 | 厂商自定义 HID，20 字节帧 |
-| 迈丛 MCHOSE | K7 V2 Ultra+ | `3837:1014`，64 字节 HID 输出报告 |
+| 迈丛 MCHOSE | K7 V2 Ultra+ | `3837:1014`，64 字节 HID `0x0900` 电量/充电查询，充电切换已实测 |
 | ROG | AZOTH EXTREME（夜魔 Extreme） | ROG OMNI RECEIVER，64 字节帧 |
 | 雷蛇 Razer | 毒蝰终极版、毒蝰 V3 Pro、炼狱蝰蛇 V3/V4 Pro、巴塞利斯蛇 V3 Pro 等无线鼠标 | 91 字节 Feature Report |
 | 雷蛇 Razer | 旋风黑鲨 V2 专业版 | 64 字节音频通道，0xFF00 |
@@ -150,7 +150,7 @@ powershell -ExecutionPolicy Bypass -File pack.ps1 -Target dist
 - ROG 接收器同时服务于其他外设。若其配对的是鼠标而非键盘，Voltide 仍会将其标记为键盘。
 - 共享同一接收器的无线设备通过接收器上报，而非各自独立上报。
 - 部分上游适配器仍按厂商与接口特征匹配。K7 V2 Ultra+ 按指定 VID/PID 与接口匹配；迈丛键盘优先用产品字符串，通用接收器可通过 `device-names.ini` 指定型号。
-- 迈丛与狼蛛共用 USB 标识（`3554:FA09`）；型号覆盖不会改变查询协议，也不代表其他品牌已经实测。GX87 的电量已实测，充电状态按官网高半字节定义解码，但尚未实测充电切换；K7 V2 Ultra+ 的充电标志尚未确认，界面显示「充电状态未知」。
+- 迈丛与狼蛛共用 USB 标识（`3554:FA09`）；型号覆盖不会改变查询协议，也不代表其他品牌已经实测。GX87 的电量已实测，充电状态按官网高半字节定义解码，但尚未实测充电切换；K7 V2 Ultra+ 的 `chargeStatus` 0/1 已按官网定义并经 2.4G 充电切换实测。
 - XInput 手柄只能读到**四档**电量（满 100% / 中 50% / 低 20% / 空 5%），不是精确百分比。卡片详情会标注 `XInput 四档`，避免误读为实测值。
 
 ## 许可

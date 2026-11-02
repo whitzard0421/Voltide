@@ -12,6 +12,7 @@ internal static class MchoseMouseProviderTests
     {
         Run("request contains only the read-only 0x0900 query", TestRequest);
         Run("accepts valid 0% and 100% replies", TestBatteryBoundaries);
+        Run("recognizes the captured 41% charging transition", TestLiveChargingTransition);
         Run("rejects invalid values, checksum, and short frames", TestInvalidReplies);
         Run("ignores other commands", TestWrongCommand);
         Run("discovers only the K7 V2 Ultra+ MI02 collection", TestDiscoveryFilter);
@@ -47,12 +48,16 @@ internal static class MchoseMouseProviderTests
     {
         AssertBattery(Reply(0, 0), 0, false);
         AssertBattery(Reply(100, 1), 100, true);
+    }
 
-        byte[] captured = Capture();
-        int percent;
-        bool charging;
-        Assert(MchoseMouseProtocol.ParseResponse(captured, out percent, out charging) == MchoseMouseReplyKind.Battery, "live capture should parse");
-        Assert(percent == 41 && !charging, "live capture reports 41%, discharging");
+    private static void TestLiveChargingTransition()
+    {
+        byte[] uncharged = Capture();
+        byte[] charging = CaptureCharging();
+        Assert(uncharged[19] == 0x00 && charging[19] == 0x01, "captured chargeStatus transition");
+        Assert(uncharged[24] == 0xA2 && charging[24] == 0xA3, "captured checksum changes with chargeStatus");
+        AssertBattery(uncharged, 41, false);
+        AssertBattery(charging, 41, true);
     }
 
     private static void TestInvalidReplies()
@@ -81,7 +86,8 @@ internal static class MchoseMouseProviderTests
         byte[] noLink = Reply(41, 0, 0);
         int percent;
         bool charging;
-        Assert(MchoseMouseProtocol.ParseResponse(noLink, out percent, out charging) == MchoseMouseReplyKind.Unavailable, "zero connection state is unavailable");
+        bool chargingKnown;
+        Assert(MchoseMouseProtocol.ParseResponse(noLink, out percent, out charging, out chargingKnown) == MchoseMouseReplyKind.Unavailable, "zero connection state is unavailable");
     }
 
     private static void TestWrongCommand()
@@ -90,7 +96,8 @@ internal static class MchoseMouseProviderTests
         report[5] = 0x08;
         int percent;
         bool charging;
-        Assert(MchoseMouseProtocol.ParseResponse(report, out percent, out charging) == MchoseMouseReplyKind.Unrelated, "wrong command must not be parsed as battery");
+        bool chargingKnown;
+        Assert(MchoseMouseProtocol.ParseResponse(report, out percent, out charging, out chargingKnown) == MchoseMouseReplyKind.Unrelated, "wrong command must not be parsed as battery");
     }
 
     private static void TestDiscoveryFilter()
@@ -123,6 +130,18 @@ internal static class MchoseMouseProviderTests
         return report;
     }
 
+    private static byte[] CaptureCharging()
+    {
+        byte[] report = new byte[64];
+        byte[] capturedPrefix = new byte[] {
+            0x4D, 0x01, 0x01, 0x10, 0x00, 0x09, 0x00, 0x00,
+            0x37, 0x38, 0x26, 0x40, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x10, 0x02, 0x01, 0x29, 0x00, 0x08, 0xE4, 0xA3
+        };
+        Array.Copy(capturedPrefix, report, capturedPrefix.Length);
+        return report;
+    }
+
     private static byte[] Reply(byte percent, byte charge)
     {
         return Reply(percent, charge, 2);
@@ -149,18 +168,21 @@ internal static class MchoseMouseProviderTests
     {
         int percent;
         bool charging;
-        MchoseMouseReplyKind result = MchoseMouseProtocol.ParseResponse(report, out percent, out charging);
+        bool chargingKnown;
+        MchoseMouseReplyKind result = MchoseMouseProtocol.ParseResponse(report, out percent, out charging, out chargingKnown);
         Assert(result == MchoseMouseReplyKind.Battery, "battery reply status");
         Assert(percent == expectedPercent, "battery percentage");
         Assert(charging == expectedCharging, "charging flag");
+        Assert(chargingKnown, "validated charging status must be known");
     }
 
     private static void AssertInvalid(byte[] report, string name)
     {
         int percent;
         bool charging;
-        Assert(MchoseMouseProtocol.ParseResponse(report, out percent, out charging) == MchoseMouseReplyKind.Invalid, name);
-        Assert(percent == 0 && !charging, name + " must not return a reading");
+        bool chargingKnown;
+        Assert(MchoseMouseProtocol.ParseResponse(report, out percent, out charging, out chargingKnown) == MchoseMouseReplyKind.Invalid, name);
+        Assert(percent == 0 && !charging && !chargingKnown, name + " must not return a reading");
     }
 
     private static HidDeviceInfo Hid(ushort vid, ushort pid, ushort page, ushort usage, int input, int output, int feature, string path)
